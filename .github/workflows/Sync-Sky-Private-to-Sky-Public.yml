@@ -16,9 +16,6 @@ jobs:
           git config --global user.name "GitHub Action Sync"
 
       - name: Push to Repository Public
-        env:
-          PAT: ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}
-          REPO_B_URL: "https://github.com/mrfidget/all-of-the-sky" 
         run: |
           # Use the PAT for authentication to push to the public repo
           git push -f https://${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git main:main
