@@ -15,7 +15,6 @@ jobs:
       - name: Remove workflow file
         run: |
           rm -f .github/workflows/Sync-Sky-Private-to-Sky-Public.yml
-          # Also remove the workflows directory if empty
           rmdir .github/workflows 2>/dev/null || true
           rmdir .github 2>/dev/null || true
 
@@ -24,32 +23,47 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@users.noreply.github.com"
 
-      - name: Test PAT access
+      - name: Debug Repository Access
         run: |
-          # Test if we can access the destination repo
-          curl -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
-          https://api.github.com/repos/mrfidget/all-of-the-sky \
-          || echo "PAT test failed"
-
-      - name: Add destination remote
-        run: |
-          git remote add destination https://x-access-token:${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
-
-      - name: Debug PAT
-        run: |
-          echo "PAT length: ${#SYNC_TOKEN}"
-          # Mask the token for security but check if it's set
-          if [ -n "$SYNC_TOKEN" ]; then
-            echo "PAT is set and has ${#SYNC_TOKEN} characters"
+          echo "Testing PAT access to destination repository..."
+          
+          # Test 1: Basic API access
+          echo "=== Test 1: Basic API Call ==="
+          curl -s -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/mrfidget/all-of-the-sky | head -20
+          
+          echo ""
+          echo "=== Test 2: Check if repo exists and accessible ==="
+          # Test 2: Check repository existence and permissions
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/mrfidget/all-of-the-sky)
+          
+          echo "HTTP Status Code: $response"
+          
+          if [ "$response" -eq 200 ]; then
+            echo "✅ Successfully accessed repository via API"
+          elif [ "$response" -eq 403 ]; then
+            echo "❌ 403 Forbidden - PAT lacks permissions"
+          elif [ "$response" -eq 404 ]; then
+            echo "❌ 404 Not Found - Repository doesn't exist or no access"
           else
-            echo "PAT is empty or not set"
+            echo "❌ Unexpected response: $response"
           fi
-        env:
-          SYNC_TOKEN: ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}
 
-      - name: Push to destination
+      - name: Test Git Operations
         run: |
+          echo "=== Testing Git Operations ==="
+          
+          # Add remote with PAT
+          git remote add destination https://${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
+          
+          # Test git push with verbose output
+          echo "Testing git push..."
           git add .
-          git commit -m "Sync from source repo - $(date)" || echo "No changes to commit"
-          # Try without force first, then with force if needed
-          git push destination main:main || git push destination main:main --force
+          git commit -m "Test sync - $(date)" || echo "No changes to commit"
+          
+          # Try push with verbose output to see where it fails
+          GIT_CURL_VERBOSE=1 GIT_TRACE=1 git push destination main:main --force 2>&1 | head -50
