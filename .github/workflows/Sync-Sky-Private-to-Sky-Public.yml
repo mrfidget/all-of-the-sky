@@ -1,38 +1,39 @@
-name: Sync main to destination
+name: Debug Destination Access
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:  # Manual trigger
+
 jobs:
-  sync:
+  debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository Private
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Checkout
+      uses: actions/checkout@v4
 
-      - name: Remove workflow file
-        run: |
-          rm -f .github/workflows/Sync-Sky-Private-to-Sky-Public.yml
-          rmdir .github/workflows 2>/dev/null || true
-          rmdir .github 2>/dev/null || true
-
-      - name: Configure Git
-        run: |
-          git config user.name "mrfidget"
-          git config user.email "ferdie@ferdie.co.uk"
-
-      - name: Push using store credential method
-        run: |
-          # Store the credential
-          git config --global credential.helper store
-          echo "https://${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}:x-oauth-basic@github.com" > ~/.git-credentials
-          
-          # Add remote without token in URL
-          git remote add destination https://github.com/mrfidget/all-of-the-sky.git
-          
-          # Push using stored credentials
-          git add .
-          git commit -m "Sync from source repo - $(date)" || echo "No changes to commit"
-          git push destination main:main --force
+    - name: Comprehensive PAT Test
+      run: |
+        echo "=== Testing PAT Permissions ==="
+        
+        # Test 1: Can we access the repo?
+        echo "1. Testing repo access..."
+        curl -s -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/mrfidget/all-of-the-sky | jq '{name, private, permissions}'
+        
+        # Test 2: Can we list branches?
+        echo ""
+        echo "2. Testing branch access..."
+        curl -s -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/mrfidget/all-of-the-sky/branches | jq '.[] | {name, protected}'
+        
+        # Test 3: Check if we have push access
+        echo ""
+        echo "3. Testing push permissions..."
+        response=$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          -X GET https://api.github.com/repos/mrfidget/all-of-the-sky)
+        echo "HTTP Status: $response"
+        
+      env:
+        GITHUB_TOKEN: ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}
