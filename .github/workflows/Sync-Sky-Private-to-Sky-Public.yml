@@ -21,4 +21,4 @@ jobs:
           REPO_B_URL: "https://github.com/mrfidget/all-of-the-sky" 
         run: |
           # Use the PAT for authentication to push to the public repo
-          git push -f https://${{ secrets.PAT }}@github.com/mrfidget/all-of-the-sky.git main:main
+          git push -f https://${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git main:main
