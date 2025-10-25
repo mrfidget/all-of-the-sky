@@ -23,70 +23,10 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@users.noreply.github.com"
 
-      - name: Debug Repository Access
-        run: |
-          echo "Testing PAT access to destination repository..."
-          
-          # Test 1: Basic API access
-          echo "=== Test 1: Basic API Call ==="
-          curl -s -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          https://api.github.com/repos/mrfidget/all-of-the-sky | head -20
-          
-          echo ""
-          echo "=== Test 2: Check if repo exists and accessible ==="
-          # Test 2: Check repository existence and permissions
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-          -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          https://api.github.com/repos/mrfidget/all-of-the-sky)
-          
-          echo "HTTP Status Code: $response"
-          
-          if [ "$response" -eq 200 ]; then
-            echo "✅ Successfully accessed repository via API"
-          elif [ "$response" -eq 403 ]; then
-            echo "❌ 403 Forbidden - PAT lacks permissions"
-          elif [ "$response" -eq 404 ]; then
-            echo "❌ 404 Not Found - Repository doesn't exist or no access"
-          else
-            echo "❌ Unexpected response: $response"
-          fi
-
-      - name: Test Git Operations
-        run: |
-          echo "=== Testing Git Operations ==="
-          
-          # Add remote with PAT
-          git remote add destination https://${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
-          
-          # Test git push with verbose output
-          echo "Testing git push..."
-          git add .
-          git commit -m "Test sync - $(date)" || echo "No changes to commit"
-          
-          # Try push with verbose output to see where it fails
-          GIT_CURL_VERBOSE=1 GIT_TRACE=1 git push destination main:main --force 2>&1 | head -50
-
-      - name: Verify Repository Details
-        run: |
-          echo "=== Repository Verification ==="
-          echo "Source repo: $GITHUB_REPOSITORY"
-          echo "Destination repo: mrfidget/all-of-the-sky"
-          echo ""
-          
-          # Check if we're trying to push to the same repo (which would cause 403)
-          if [ "$GITHUB_REPOSITORY" = "mrfidget/all-of-the-sky" ]; then
-            echo "❌ ERROR: Source and destination repositories are the same!"
-            exit 1
-          else
-            echo "✅ Source and destination are different repositories"
-          fi
-          
-          # Verify the destination repo exists and is accessible
-          echo "Checking destination repository..."
-          if git ls-remote https://github.com/mrfidget/all-of-the-sky.git &>/dev/null; then
-            echo "✅ Destination repository exists and is accessible"
-          else
-            echo "❌ Cannot access destination repository"
-          fi
+      - name: Push to destination repository
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}
+          repository: mrfidget/all-of-the-sky
+          branch: main
+          force: true
