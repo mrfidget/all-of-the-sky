@@ -33,7 +33,7 @@ jobs:
 
       - name: Add destination remote
         run: |
-          git remote add destination https://${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
+          git remote add destination https://x-access-token:${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
 
       - name: Push to destination
         run: |
