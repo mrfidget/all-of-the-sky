@@ -35,6 +35,18 @@ jobs:
         run: |
           git remote add destination https://x-access-token:${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
 
+      - name: Debug PAT
+        run: |
+          echo "PAT length: ${#SYNC_TOKEN}"
+          # Mask the token for security but check if it's set
+          if [ -n "$SYNC_TOKEN" ]; then
+            echo "PAT is set and has ${#SYNC_TOKEN} characters"
+          else
+            echo "PAT is empty or not set"
+          fi
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}
+
       - name: Push to destination
         run: |
           git add .
