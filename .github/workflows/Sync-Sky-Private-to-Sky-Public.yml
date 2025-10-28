@@ -1,8 +1,10 @@
-name: Sync main to destination
+name: Debug Git Push
 on:
   push:
     branches:
       - main
+  workflow_dispatch:  # Allow manual trigger too
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -14,40 +16,131 @@ jobs:
 
       - name: Remove workflow file
         run: |
+          echo "=== Removing workflow files ==="
           rm -f .github/workflows/Sync-Sky-Private-to-Sky-Public.yml
           rmdir .github/workflows 2>/dev/null || true
           rmdir .github 2>/dev/null || true
+          echo "Workflow files removed"
 
       - name: Configure Git
         run: |
+          echo "=== Configuring Git ==="
           git config user.name "GitHub Actions"
           git config user.email "actions@users.noreply.github.com"
+          git config --list | grep -E "(user\.name|user\.email)"
 
       - name: Add destination remote
         run: |
+          echo "=== Adding destination remote ==="
           git remote add destination https://${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
-
-      - name: Debug Git Push
-        run: |
-          echo "=== Current remotes ==="
           git remote -v
-          
-          echo "=== Current branch ==="
+
+      - name: Debug Git State
+        run: |
+          echo "=== Current Git State ==="
+          echo "Current branch:"
           git branch -a
+          echo ""
+          echo "Git status:"
+          git status --short
+          echo ""
+          echo "Recent commits:"
+          git log --oneline -5
+          echo ""
+          echo "File changes to be committed:"
+          git diff --name-only --cached
+          echo ""
+          echo "File changes not staged:"
+          git diff --name-only
+
+      - name: Test Network and Authentication
+        run: |
+          echo "=== Testing Network and Auth ==="
+          echo "1. Testing basic connectivity to GitHub..."
+          ping -c 3 github.com || echo "Ping failed (expected in Actions)"
           
-          echo "=== Git status ==="
-          git status
+          echo ""
+          echo "2. Testing HTTPS connectivity..."
+          curl -I https://github.com 2>/dev/null | head -1 || echo "HTTPS test failed"
           
-          echo "=== Testing git ls-remote ==="
-          timeout 30 git ls-remote destination || echo "ls-remote failed/timed out"
+          echo ""
+          echo "3. Testing PAT authentication with API..."
+          API_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}" \
+            https://api.github.com/repos/mrfidget/all-of-the-sky)
+          echo "API HTTP Status: $API_RESPONSE"
           
-          echo "=== Attempting push with detailed output ==="
-          GIT_TRACE=1 GIT_CURL_VERBOSE=1 GIT_SSH_COMMAND="ssh -v" timeout 120 git push destination main:main --force 2>&1 | head -100
+          echo ""
+          echo "4. Testing git ls-remote (should show branches)..."
+          timeout 30 git ls-remote destination 2>&1 | head -20
+
+      - name: Stage and Commit Changes
+        run: |
+          echo "=== Staging and Committing ==="
+          echo "Staging all changes..."
+          git add .
           
-          echo "=== If above failed, let's try a different approach ==="
-          # Try pushing a single file first
-          echo "test" > test-file.txt
-          git add test-file.txt
-          git commit -m "Test push"
-          timeout 60 git push destination main:main --force
-          echo "Push exit code: $?"
+          echo "Creating commit..."
+          git commit -m "Sync from source repo - $(date +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          
+          echo "Commit created (or no changes)"
+
+      - name: Debug Git Push with Maximum Verbosity
+        run: |
+          echo "=== Attempting Git Push with Full Debug ==="
+          echo "Setting maximum Git tracing..."
+          
+          # Set all possible debug environment variables
+          export GIT_TRACE=1
+          export GIT_TRACE_PACKET=1
+          export GIT_TRACE_PERFORMANCE=1
+          export GIT_TRACE_SETUP=1
+          export GIT_CURL_VERBOSE=1
+          export GIT_SSH_COMMAND="ssh -vvv"
+          
+          echo "Starting push with 120 second timeout..."
+          timeout 120 git push destination main:main --force 2>&1 | tee push_debug.log
+          
+          PUSH_EXIT_CODE=$?
+          echo ""
+          echo "=== Push Completed ==="
+          echo "Push exit code: $PUSH_EXIT_CODE"
+          
+          if [ $PUSH_EXIT_CODE -eq 0 ]; then
+            echo "✅ Push succeeded!"
+          elif [ $PUSH_EXIT_CODE -eq 124 ]; then
+            echo "❌ Push timed out after 120 seconds"
+            echo "Last 50 lines of debug output:"
+            tail -50 push_debug.log
+          else
+            echo "❌ Push failed with exit code: $PUSH_EXIT_CODE"
+            echo "Last 50 lines of debug output:"
+            tail -50 push_debug.log
+          fi
+
+      - name: Alternative Push Methods
+        if: failure()
+        run: |
+          echo "=== Trying Alternative Push Methods ==="
+          
+          echo "1. Trying push without force..."
+          timeout 60 git push destination main:main 2>&1 | tail -20
+          
+          echo ""
+          echo "2. Trying push with different remote URL format..."
+          git remote remove destination
+          git remote add destination https://x-access-token:${{ secrets.SYNC_PRIVATE_TO_PUBLIC }}@github.com/mrfidget/all-of-the-sky.git
+          timeout 60 git push destination main:main --force 2>&1 | tail -20
+          
+          echo ""
+          echo "3. Trying shallow push..."
+          git push --depth 1 destination main:main --force 2>&1 | tail -20
+
+      - name: Upload Debug Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-push-debug-logs
+          path: |
+            push_debug.log
+          retention-days: 1
